@@ -174,9 +174,9 @@ def main():
             if controller is not None:
                 touched, grasped = env.cube_contact_state()
                 if touched - previous_touched:
-                    controller.vibrate(args.rumble_strength, args.rumble_duration)
+                    print('[contact] touch ->', controller.vibrate(args.rumble_strength, args.rumble_duration))
                 if grasped - previous_grasped:
-                    controller.vibrate(args.rumble_strength, args.rumble_duration * 2)
+                    print('[contact] grasp ->', controller.vibrate(args.rumble_strength, args.rumble_duration * 2))
                 previous_touched = touched
                 previous_grasped = grasped
 
