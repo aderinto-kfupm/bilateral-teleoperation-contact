@@ -20,7 +20,7 @@ make sim                # self-check, then GUI run of scenario C (Windows: scrip
 make reproduce          # headless run of every scenario; writes results/<stamp>/
 ```
 
-Simulation details, scenarios and metrics: [docs/simulation.md](docs/simulation.md). Environment notes: [docs/environments.md](docs/environments.md).
+Setup from scratch: [docs/setup.md](docs/setup.md). Simulation details, scenarios and metrics: [docs/simulation.md](docs/simulation.md). Environment notes: [docs/environments.md](docs/environments.md).
 
 ## Layout
 

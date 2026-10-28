@@ -19,6 +19,8 @@ src/python/teleop/
 `scripts/sim.cmd` finds the `franka-haptics` env itself (override with `SIM_PY`), checks the packages, and runs the self-check first.
 Git Bash / Linux / macOS: `./scripts/sim.sh` (or `make sim`) does the same with the same arguments (falls back to `python3` on PATH if the conda env is absent).
 
+Full from-scratch walkthrough: [setup.md](setup.md).
+
 ## Run (manual)
 
 Use the `franka-haptics` conda env from `src/haptic-control/QUICKSTART.md` (plus `matplotlib==3.9.2`; keep `numpy==1.26.0`, newer numpy breaks opencv/pybullet there).
@@ -26,7 +28,7 @@ Use the `franka-haptics` conda env from `src/haptic-control/QUICKSTART.md` (plus
 ```powershell
 $PY = "$env:USERPROFILE\miniconda3\envs\franka-haptics\python.exe"
 $env:PYTHONPATH = "src\python"
-& $PY tests	est_controller.py                                  # sanity check, 1 s
+& $PY tests\test_controller.py                                  # sanity check, 1 s
 & $PY -m teleop.run --scenario all --operator scripted           # H2 test: operator keeps pushing into the surface
 & $PY -m teleop.run --scenario all --operator reactive           # H1 test: operator eases off as the cue grows
 & $PY -m teleop.run --scenario C --gui                           # watch one scenario in real time

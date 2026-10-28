@@ -1,5 +1,7 @@
 # Onboarding
 
+New to the simulation? Start with [setup.md](setup.md).
+
 Goal: from clone to a built paper and a reproduced figure in under 30 minutes.
 
 ## 1. Prerequisites
