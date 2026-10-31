@@ -9,5 +9,5 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e "src/python[dev]"
-      - run: ruff check src tests
+      - run: ruff check src/python tests
       - run: pytest

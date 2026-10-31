@@ -15,6 +15,7 @@ import json
 import os
 import time
 from dataclasses import replace
+
 import numpy as np
 
 from . import config
@@ -71,10 +72,14 @@ class Scripted:
 
 
 class DualSense:
-    """Left stick = tangential x/y, right stick y = z. Rumble = cue; trigger resistance is log/overlay only."""
+    """Left stick = tangential x/y, right stick y = z. Options = reset the trial, Circle = end it.
+    Rumble = cue; trigger resistance is log/overlay only."""
 
-    def __init__(self, index=0, speed=0.06, clutch_button=None):
+    RESET_BUTTON, END_BUTTON = 9, 1                        # pygame/SDL indices on Windows (starter README)
+
+    def __init__(self, index=0, speed=0.06, clutch_button=None, haptic=True):
         import pygame
+        self.haptic = haptic                               # False in the baseline: no cue is rendered
         pygame.init()
         self.pg, self.speed, self.clutch = pygame, speed, clutch_button
         for i in range(30):                                # wait up to ~15 s for the pad to (re)connect
@@ -86,19 +91,30 @@ class DualSense:
                 print("[sim] no controller found; connect the DualSense (USB/Bluetooth). Waiting up to 15 s...")
             time.sleep(0.5)
         else:
-            raise SystemExit("[sim] still no controller. Check it with ..\\haptic-control\\controller_test_ps5.py --list, "
+            raise SystemExit("[sim] still no controller. Check it with src\\haptic-control\\controller_test_ps5.py --list, "
                              "or run with --operator keyboard (arrows = x/y, W/S = z).")
         self.js = pygame.joystick.Joystick(index)
         self.js.init()
         print(f"[sim] using controller: {self.js.get_name()}")
         self.phase, self.last_rumble = "manual", 0.0
+        self.prev = {}
+
+    def _pressed(self, b):
+        """True on the press edge of button b."""
+        now = b < self.js.get_numbuttons() and bool(self.js.get_button(b))
+        was, self.prev[b] = self.prev.get(b, False), now
+        return now and not was
 
     def __call__(self, t, obs):
         self.pg.event.pump()
+        if self._pressed(self.RESET_BUTTON):
+            return np.zeros(3), "reset"
+        if self._pressed(self.END_BUTTON):
+            return np.zeros(3), "done"
         ax = lambda i: (lambda v: 0.0 if abs(v) < 0.08 else v)(self.js.get_axis(i))
         engaged = self.clutch is None or self.js.get_button(self.clutch)
         u = np.array([ax(0), -ax(1), -ax(3)]) * self.speed if engaged else np.zeros(3)
-        if obs and t - self.last_rumble > 0.03:
+        if self.haptic and obs and t - self.last_rumble > 0.03:
             self.js.rumble(obs["a_vib"], min(1.0, 0.6 * obs["a_trig"]), 60)
             self.last_rumble = t
         if obs and obs["p_raw"][0] >= X1:                  # reached the end of the path
@@ -107,7 +123,8 @@ class DualSense:
 
 
 class Keyboard:
-    """No-controller fallback (needs --gui, click the PyBullet window): arrows = x/y, W/S = z up/down. No haptic cue."""
+    """No-controller fallback (needs --gui, click the PyBullet window): arrows = x/y, W/S = z up/down,
+    R = reset the trial, Q = end it. No haptic cue."""
 
     def __init__(self, speed=0.06):
         import pybullet as p
@@ -116,6 +133,10 @@ class Keyboard:
     def __call__(self, t, obs):
         p, k = self.p, self.p.getKeyboardEvents()
         down = lambda key: bool(k.get(key, 0) & p.KEY_IS_DOWN)
+        if k.get(ord("r"), 0) & p.KEY_WAS_TRIGGERED:
+            return np.zeros(3), "reset"
+        if k.get(ord("q"), 0) & p.KEY_WAS_TRIGGERED:
+            return np.zeros(3), "done"
         u = np.array([down(p.B3G_RIGHT_ARROW) - down(p.B3G_LEFT_ARROW),
                       down(p.B3G_UP_ARROW) - down(p.B3G_DOWN_ARROW),
                       down(ord("w")) - down(ord("s"))], float) * self.speed
@@ -135,9 +156,10 @@ def run_scenario(name, args):
         sc.command_tip(p0)
         sc.step()
     ctrl = Controller(P, mode, p0)
-    op = (DualSense(index=args.controller_index, clutch_button=args.clutch_button) if args.operator == "dualsense" else
+    op = (DualSense(index=args.controller_index, clutch_button=args.clutch_button, haptic=haptic) if args.operator == "dualsense" else
           Keyboard() if args.operator == "keyboard" else
-          Scripted(sc, guided=mode.force_track, reactive=args.operator == "reactive", haptic=haptic, seed=args.seed))
+          Scripted(sc, guided=mode.force_track, reactive=args.operator == "reactive", haptic=haptic, seed=args.seed,
+                   push_depth=getattr(args, "push_depth", 0.03)))
     overlay = Overlay(sc, name) if args.gui else None
 
     rows, obs, t, done_t = [], None, 0.0, None
@@ -145,6 +167,9 @@ def run_scenario(name, args):
         while t < TIMEOUT_S:
             t0 = time.perf_counter()
             u, phase = op(t, obs)
+            if phase == "reset":                           # operator asked for a fresh trial
+                sc.close()
+                return None, P
             tip, vel = sc.tip()
             fe, n_true, npts = sc.contact_wrench()
             obs = ctrl.step(u, fe, tip, vel, n_true)
@@ -221,12 +246,15 @@ def metrics(name, rows, P):
     max_loss_s = float(runs.max() * dt) if len(runs) else 0.0
     done = any(r["phase"] == "done" for r in rows)
     reasons = []
+    x = c("tip_x")[tr]
+    covered = np.unique(np.clip(np.digitize(x[contact], np.linspace(X0, X1, 21)), 1, 20))
     if not done: reasons.append("timeout")
+    elif x.max() < X1 - 0.02: reasons.append("ended before path end")    # Q / Circle pressed early (tip may lag the reference)
+    if not contact.any(): reasons.append("no contact")
+    elif len(covered) < 18: reasons.append(f"coverage {5 * len(covered)}%<90%")
     if fn.max() > F_FAIL: reasons.append(f"peak force>{F_FAIL:.0f}N")
     if max_loss_s > LOSS_FAIL_S: reasons.append("prolonged contact loss")
     if c("near_limit").any(): reasons.append("joint limit")
-    x = c("tip_x")[tr]
-    covered = np.unique(np.clip(np.digitize(x[contact], np.linspace(X0, X1, 21)), 1, 20))
     dist = c("dist_to_surface")[tr]
     path_err = np.sqrt(np.mean(c("tip_y")[tr] ** 2 + dist ** 2))
     d = lambda v: np.diff(v) / dt
@@ -307,6 +335,8 @@ def main():
     ap.add_argument("--gui", action="store_true")
     ap.add_argument("--seed", type=int, default=config.SEED)
     ap.add_argument("--outdir", default=None)
+    ap.add_argument("--push-depth", type=float, default=0.03,
+                    help="scripted/reactive operator: how far the reference is pushed past the surface [m]")
     ap.add_argument("--clutch-button", type=int, default=None, help="DualSense button held to move (default: always on)")
     args = ap.parse_args()
     names = {"all": PLANAR + CURVED, "planar": PLANAR, "curved": CURVED}.get(args.scenario, [args.scenario])
@@ -315,6 +345,9 @@ def main():
     results, summ = [], []
     for name in names:
         rows, P = run_scenario(name, args)
+        while rows is None:                                # reset: same scenario, fresh scene and initial state
+            print(f"[sim] {name}: reset by the operator, restarting the trial")
+            rows, P = run_scenario(name, args)
         if not rows:
             continue
         write_csv(rows, os.path.join(outdir, f"{name}.csv"))

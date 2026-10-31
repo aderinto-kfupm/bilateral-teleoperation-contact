@@ -8,7 +8,10 @@ setlocal
 cd /d "%~dp0.."
 set "PYTHONPATH=%CD%\src\python"
 
+rem An activated conda env (other than base) wins: conda activate franka-haptics && scripts\sim.cmd
+if not defined SIM_PY if defined CONDA_PREFIX if /i not "%CONDA_DEFAULT_ENV%"=="base" if exist "%CONDA_PREFIX%\python.exe" set "SIM_PY=%CONDA_PREFIX%\python.exe"
 if not defined SIM_PY set "SIM_PY=%USERPROFILE%\miniconda3\envs\franka-haptics\python.exe"
+if not exist "%SIM_PY%" set "SIM_PY=%USERPROFILE%\anaconda3\envs\franka-haptics\python.exe"
 if not exist "%SIM_PY%" set "SIM_PY=%LOCALAPPDATA%\miniconda3\envs\franka-haptics\python.exe"
 if not exist "%SIM_PY%" (
   echo [sim] franka-haptics env not found. Set it up per src\haptic-control\QUICKSTART.md or set SIM_PY=path\to\python.exe
@@ -23,7 +26,7 @@ if errorlevel 1 (
 )
 
 echo [sim] self-check...
-"%SIM_PY%" tests	est_controller.py
+"%SIM_PY%" tests\test_controller.py
 if errorlevel 1 (
   echo [sim] self-check FAILED, not starting the simulation
   exit /b 1

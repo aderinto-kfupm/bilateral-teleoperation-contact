@@ -5,6 +5,7 @@ joint-position-controlled arm, probe-surface contact wrench reconstructed from c
 and a ground-truth surface normal for scoring the online normal estimate.
 """
 import os
+
 import numpy as np
 import pybullet as p
 import pybullet_data
@@ -72,7 +73,8 @@ class Scene:
                            [0, 0, 0], (np.array([0, 0, TOOL_OFFSET]) - com).tolist(), [0, 0, 0])
         for l in range(-1, p.getNumJoints(self.robot)):          # probe only touches the surface
             p.setCollisionFilterPair(self.robot, self.probe, l, -1, 0)
-        p.changeDynamics(self.probe, -1, lateralFriction=0.3, contactStiffness=self.Ke,
+        # PyBullet multiplies the two bodies' friction coefficients: 1.0 here gives mu = 0.3 overall
+        p.changeDynamics(self.probe, -1, lateralFriction=1.0, contactStiffness=self.Ke,
                          contactDamping=2 * np.sqrt(self.Ke * 0.05))
 
     # --------------------------------------------------------------- state
@@ -104,7 +106,8 @@ class Scene:
         f_on_probe, n = np.zeros(3), np.zeros(3)
         for c in pts:
             nB = np.array(c[7])                     # contact normal on surface, points surface -> probe
-            f_on_probe += c[9] * nB + c[10] * np.array(c[11]) + c[12] * np.array(c[13])
+            # PyBullet reports lateral friction as acting on body B (the surface): flip it for the probe
+            f_on_probe += c[9] * nB - c[10] * np.array(c[11]) - c[12] * np.array(c[13])
             n += nB
         if pts:
             n /= np.linalg.norm(n)
