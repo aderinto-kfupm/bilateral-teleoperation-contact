@@ -19,6 +19,9 @@ class Scene:
     def __init__(self, gui=False, surface="plane", dt=1 / 240, Ke=1e4):
         self.dt, self.surface_kind, self.Ke = dt, surface, Ke
         self.client = p.connect(p.GUI if gui else p.DIRECT)
+        if gui:                             # clean view; PyBullet's own hotkeys would clash with W/S/R/Q
+            p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+            p.configureDebugVisualizer(p.COV_ENABLE_KEYBOARD_SHORTCUTS, 0)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setTimeStep(dt)
         p.setGravity(0, 0, -9.81)

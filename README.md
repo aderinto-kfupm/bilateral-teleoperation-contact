@@ -71,8 +71,11 @@ scripts\sim.cmd --scenario C        --operator dualsense --gui --outdir results\
 | End the trial and save the log | Circle | Q |
 | Clutch (optional, `--clutch-button N`) | hold button N to move | -- |
 
-A trial passes when you reach the end of the path (x = 0.65 m) in contact, with peak force < 20 N.
-Ending early, never touching the surface or skipping more than 10 % of the path counts as a failure.
+A trial passes when you reach the end of the yellow line (x = 0.65 m) in contact within 25 s, with peak
+force < 20 N. Ending early, never touching the surface or skipping more than 10 % of the path counts as a
+failure. The window closes when the trial ends; the terminal shows the time left every 10 s. For practice
+runs, `--timeout 60` gives more time, and `--hud` shows the force/cue readout (off by default, so the
+baseline stays visual-only). PyBullet's own hotkeys and side panels are disabled in the GUI.
 Check the pad with `python src\haptic-control\controller_test_ps5.py --list` (fixes in [docs/setup.md](docs/setup.md#6-troubleshooting)).
 
 **Automatic operators** (no input; deterministic, so the same command gives the same numbers):

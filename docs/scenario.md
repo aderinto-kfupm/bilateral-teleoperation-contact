@@ -58,6 +58,7 @@ loop timing. See `docs/simulation.md`.
 * Every run builds a fresh PyBullet world, so each scenario starts from the same state.
 * Interactive runs: **Options** on the DualSense or **R** on the keyboard restarts the current trial from
   the initial conditions above; **Circle** or **Q** ends it and saves the log.
+* The GUI shows no text by default (the baseline is visual-only); `--hud` adds the force/cue readout.
 * Headless runs are deterministic: the same command gives identical traces.
 
 ## Baseline

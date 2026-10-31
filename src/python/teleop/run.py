@@ -160,11 +160,21 @@ def run_scenario(name, args):
           Keyboard() if args.operator == "keyboard" else
           Scripted(sc, guided=mode.force_track, reactive=args.operator == "reactive", haptic=haptic, seed=args.seed,
                    push_depth=getattr(args, "push_depth", 0.03)))
-    overlay = Overlay(sc, name) if args.gui else None
+    overlay = Overlay(sc, name, hud=getattr(args, "hud", False)) if args.gui else None
+    timeout = getattr(args, "timeout", TIMEOUT_S)
+    human = args.operator in ("keyboard", "dualsense")
+    if human:
+        keys = "Q ends, R resets" if args.operator == "keyboard" else "Circle ends, Options resets"
+        print(f"[sim] {name}: go down to the plate and follow the yellow line to its end within "
+              f"{timeout:.0f} s ({keys})")
 
     rows, obs, t, done_t = [], None, 0.0, None
     try:
-        while t < TIMEOUT_S:
+        next_note = 10.0
+        while t < timeout:
+            if human and t >= next_note:
+                print(f"[sim] {timeout - t:.0f} s left")
+                next_note += 10.0
             t0 = time.perf_counter()
             u, phase = op(t, obs)
             if phase == "reset":                           # operator asked for a fresh trial
@@ -199,6 +209,8 @@ def run_scenario(name, args):
                 done_t = done_t or t
                 if t - done_t > 0.5:
                     break
+        if t >= timeout and human:
+            print(f"[sim] time limit ({timeout:.0f} s) reached: trial ended")
     except KeyboardInterrupt:
         print("interrupted: saving what was logged")
     sc.close()
@@ -208,9 +220,9 @@ def run_scenario(name, args):
 class Overlay:
     """GUI observability: force arrow, reference/command markers, text readout, path line."""
 
-    def __init__(self, scene, name):
+    def __init__(self, scene, name, hud=False):
         import pybullet as p
-        self.p, self.s, self.name, self.ids = p, scene, name, {}
+        self.p, self.s, self.name, self.ids, self.hud = p, scene, name, {}, hud
         pts = [[x, 0, scene.surface_height_normal(x)[0] + 0.002] for x in np.linspace(X0, X1, 40)]
         for a, b in zip(pts[:-1], pts[1:]):
             p.addUserDebugLine(a, b, [1, 1, 0], 3)
@@ -223,6 +235,8 @@ class Overlay:
         self._line("force", tip.tolist(), (tip - fe * 0.01).tolist(), [min(1, obs["fn"] / 12), 0.2, 0.2])
         for key, rgb in (("p_h", [0, 1, 0]), ("p_c", [0, 0.4, 1])):
             self._line("m_" + key, (obs[key] - [0.01, 0, 0]).tolist(), (obs[key] + [0.01, 0, 0]).tolist(), rgb)
+        if not self.hud:                   # no text by default: the baseline must stay visual-only
+            return
         txt = (f"{self.name} [{phase}]  fn={obs['fn']:5.1f}N  vib={obs['a_vib']:.2f}  trig={obs['a_trig']:.2f}"
                f"  sat={'ON' if obs['saturated'] else 'off'}   green=p_h(operator) blue=p_c(robot)")
         self.ids["txt"] = self.p.addUserDebugText(txt, [0.30, -0.3, self.s.surface_top + 0.25], [0, 0, 0], 1.2,
@@ -337,6 +351,9 @@ def main():
     ap.add_argument("--outdir", default=None)
     ap.add_argument("--push-depth", type=float, default=0.03,
                     help="scripted/reactive operator: how far the reference is pushed past the surface [m]")
+    ap.add_argument("--timeout", type=float, default=TIMEOUT_S,
+                    help=f"trial time limit [s] (default {TIMEOUT_S:.0f}; the success criterion uses this limit)")
+    ap.add_argument("--hud", action="store_true", help="show the text readout (force, cues) in the GUI")
     ap.add_argument("--clutch-button", type=int, default=None, help="DualSense button held to move (default: always on)")
     args = ap.parse_args()
     names = {"all": PLANAR + CURVED, "planar": PLANAR, "curved": CURVED}.get(args.scenario, [args.scenario])

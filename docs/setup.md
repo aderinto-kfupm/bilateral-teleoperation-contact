@@ -77,6 +77,10 @@ Controls:
 | End the trial and save the log | Circle | Q |
 | Clutch (optional) | button chosen with `--clutch-button N` (hold to move) | -- |
 
+A trial ends at the end of the yellow line, when you end it, or after 25 s (`--timeout N` to change it for
+practice; the terminal prints the time left). The GUI shows the path, the force arrow and the operator (green)
+and robot (blue) markers; add `--hud` for the text readout of force and cues.
+
 Feedback: the two vibration motors play the vibration cue (low) and the trigger cue (high). Adaptive-trigger
 resistance is not driven (Pygame cannot), it is shown in the overlay only. The baseline gives no cue.
 
@@ -93,6 +97,7 @@ Example: `scripts\sim.cmd --scenario C --operator dualsense --gui`
 | Numpy/opencv import errors | You upgraded numpy; reinstall `numpy==1.26.0`. |
 | Controller not detected (`No controllers found`) | Check that Windows sees it: Win+R, `joy.cpl`. Use a data USB cable (not charge-only) or pair by Bluetooth (hold Create + PS). Close Steam, DS4Windows and DSX (also from the tray): they can grab the pad. Re-check with `python src\haptic-control\controller_test_ps5.py --list`. Meanwhile use `--operator keyboard`. |
 | Keyboard does nothing | Click inside the PyBullet window so it has focus. |
+| Window closes by itself | The 25 s trial limit was reached (the terminal says so). Use `--timeout 60` to practise. |
 
 ## 7. Developer extras
 ```bash
