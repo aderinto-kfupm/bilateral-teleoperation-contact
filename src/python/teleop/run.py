@@ -92,7 +92,7 @@ class DualSense:
             time.sleep(0.5)
         else:
             raise SystemExit("[sim] still no controller. Check it with src\\haptic-control\\controller_test_ps5.py --list, "
-                             "or run with --operator keyboard (arrows = x/y, W/S = z).")
+                             "or run with --operator keyboard (arrows = x/y, W/S or Page Up/Down = z).")
         self.js = pygame.joystick.Joystick(index)
         self.js.init()
         print(f"[sim] using controller: {self.js.get_name()}")
@@ -123,23 +123,36 @@ class DualSense:
 
 
 class Keyboard:
-    """No-controller fallback (needs --gui, click the PyBullet window): arrows = x/y, W/S = z up/down,
-    R = reset the trial, Q = end it. No haptic cue."""
+    """No-controller fallback (needs --gui, click the PyBullet window): arrows = x/y, W/S or Page Up/Down = z,
+    R = reset the trial, Q = end it. No haptic cue. Letters are accepted in either case."""
 
     def __init__(self, speed=0.06):
         import pybullet as p
         self.p, self.speed, self.phase = p, speed, "manual"
+        self.known = {p.B3G_RIGHT_ARROW, p.B3G_LEFT_ARROW, p.B3G_UP_ARROW, p.B3G_DOWN_ARROW,
+                      p.B3G_PAGE_UP, p.B3G_PAGE_DOWN, *(ord(c) for c in "wsrqWSRQ")}
+        self.reported = set()
 
     def __call__(self, t, obs):
         p, k = self.p, self.p.getKeyboardEvents()
-        down = lambda key: bool(k.get(key, 0) & p.KEY_IS_DOWN)
-        if k.get(ord("r"), 0) & p.KEY_WAS_TRIGGERED:
+
+        def down(*keys):
+            return any(k.get(key, 0) & p.KEY_IS_DOWN for key in keys)
+
+        def hit(c):
+            return any(k.get(ord(x), 0) & p.KEY_WAS_TRIGGERED for x in (c, c.upper()))
+
+        for key in set(k) - self.known - self.reported - {-1, p.B3G_SHIFT, p.B3G_CONTROL, p.B3G_ALT}:  # diagnose layouts
+            self.reported.add(key)
+            print(f"[sim] key code {key} is not mapped (z: W/S or Page Up/Down; R reset; Q end)")
+        if hit("r"):
             return np.zeros(3), "reset"
-        if k.get(ord("q"), 0) & p.KEY_WAS_TRIGGERED:
+        if hit("q"):
             return np.zeros(3), "done"
         u = np.array([down(p.B3G_RIGHT_ARROW) - down(p.B3G_LEFT_ARROW),
                       down(p.B3G_UP_ARROW) - down(p.B3G_DOWN_ARROW),
-                      down(ord("w")) - down(ord("s"))], float) * self.speed
+                      down(ord("w"), ord("W"), p.B3G_PAGE_UP) - down(ord("s"), ord("S"), p.B3G_PAGE_DOWN)],
+                     float) * self.speed
         if obs and obs["p_raw"][0] >= X1:
             return np.zeros(3), "done"
         return u, self.phase

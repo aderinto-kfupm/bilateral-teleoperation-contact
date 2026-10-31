@@ -66,7 +66,7 @@ scripts\sim.cmd --scenario C        --operator dualsense --gui --outdir results\
 | Action | DualSense | Keyboard (click the PyBullet window first) |
 |---|---|---|
 | Move x / y | left stick | arrow keys |
-| Move z (into / away from the surface) | right stick, vertical | S / W |
+| Move z (into / away from the surface) | right stick, vertical | S / W, or Page Down / Page Up |
 | Reset the trial (same scenario, initial state) | Options | R |
 | End the trial and save the log | Circle | Q |
 | Clutch (optional, `--clutch-button N`) | hold button N to move | -- |

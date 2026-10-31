@@ -72,7 +72,7 @@ Controls:
 | Action | DualSense | Keyboard |
 |---|---|---|
 | Move x / y | left stick | left-right / up-down arrows |
-| Move z (into / away from the surface) | right stick, vertical | S / W |
+| Move z (into / away from the surface) | right stick, vertical | S / W, or Page Down / Page Up |
 | Reset the trial (same scenario, initial state) | Options | R |
 | End the trial and save the log | Circle | Q |
 | Clutch (optional) | button chosen with `--clutch-button N` (hold to move) | -- |
