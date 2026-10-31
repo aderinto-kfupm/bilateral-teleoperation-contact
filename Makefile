@@ -1,4 +1,4 @@
-.PHONY: paper watch check env test lint sim reproduce clean
+.PHONY: paper watch check env test lint sim reproduce pilot figures clean
 
 # Use the project venv if `make env` created one (Windows: Scripts, else bin).
 VENV_PY := $(firstword $(wildcard .venv/Scripts/python.exe .venv/bin/python))
@@ -22,7 +22,7 @@ test:
 	$(PY) -m pytest
 
 lint:
-	$(PY) -m ruff check src tests
+	$(PY) -m ruff check src/python tests
 
 sim:
 	./scripts/sim.sh
@@ -30,6 +30,14 @@ sim:
 # Headless run of every scenario; writes results/<stamp>/.
 reproduce:
 	$(PY) -m teleop.run --scenario all --operator scripted
+
+# Phase 3 pilot sweep; writes results/pilot_<stamp>/.
+pilot:
+	PYTHONPATH=src/python $(PY) -m teleop.pilot
+
+# Offscreen render of the scenario for the reports.
+figures:
+	PYTHONPATH=src/python $(PY) -m teleop.render
 
 clean:
 	cd writeup && latexmk -C

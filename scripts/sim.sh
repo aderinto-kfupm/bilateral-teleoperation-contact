@@ -10,8 +10,11 @@ export PYTHONPATH="$PWD/src/python"
 find_py() {
   [ -n "$SIM_PY" ] && { echo "$SIM_PY"; return; }
   local c
+  if [ -n "$CONDA_PREFIX" ] && [ "${CONDA_DEFAULT_ENV:-base}" != "base" ]; then   # activated conda env wins
+    for c in "$CONDA_PREFIX/python.exe" "$CONDA_PREFIX/bin/python"; do [ -x "$c" ] && { echo "$c"; return; }; done
+  fi
   for c in "$HOME/miniconda3/envs/franka-haptics/python.exe" "$HOME/miniconda3/envs/franka-haptics/bin/python" \
-           "$LOCALAPPDATA/miniconda3/envs/franka-haptics/python.exe" "$HOME/anaconda3/envs/franka-haptics/bin/python"; do
+           "$LOCALAPPDATA/miniconda3/envs/franka-haptics/python.exe" "$HOME/anaconda3/envs/franka-haptics/python.exe" "$HOME/anaconda3/envs/franka-haptics/bin/python"; do
     [ -x "$c" ] && { echo "$c"; return; }
   done
   command -v python3 || command -v python || true

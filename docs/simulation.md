@@ -7,6 +7,8 @@ src/python/teleop/
   controller.py       the paper's control law (pure numpy): blocks 1-4, 8, 9 of Fig. 1
   scene.py            PyBullet: Franka + probe + rigid plane/curved surface, contact wrench, IK (blocks 5-7)
   run.py              scenarios, operators, per-step logging, metrics, plots, GUI overlay
+  pilot.py            Phase 3 pilot sweep (push depth x scenario)
+  render.py           offscreen render of the scene for the reports
   tests/test_controller.py  4 self-checks of the control law against an ideal spring wall (no PyBullet)
 ```
 

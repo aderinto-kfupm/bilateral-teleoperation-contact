@@ -16,3 +16,6 @@ packages = ["teleop"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+select = ["E9", "F", "I"]   # real errors + import order; the compact one-line style is intentional

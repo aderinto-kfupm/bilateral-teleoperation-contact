@@ -3,12 +3,29 @@ message: "If you use this work, please cite it as below."
 title: "Bilateral Teleoperation for Safe Surface-Contact Tasks"
 type: software   # CFF allows only software|dataset; this cites the code+paper repo. Cite the paper itself via preferred-citation once published.
 authors:
+  - family-names: "Yusuf"
+    given-names: "Sharfiden Hassen"
+    affiliation: "King Fahd University of Petroleum and Minerals"
+  - family-names: "Mohamedahmed"
+    given-names: "Mohamed"
+    affiliation: "King Fahd University of Petroleum and Minerals"
+  - family-names: "Ceesay"
+    given-names: "Alagie Madi"
+    affiliation: "King Fahd University of Petroleum and Minerals"
+  - family-names: "Aderinto"
+    given-names: "Abdurrahman Adebisi"
+    affiliation: "King Fahd University of Petroleum and Minerals"
+version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "Bilateral Teleoperation for Safe Surface-Contact Tasks"
+type: software   # CFF allows only software|dataset; this cites the code+paper repo. Cite the paper itself via preferred-citation once published.
+authors:
   - family-names: "Aderinto"
     given-names: "Abdurrahman Adebisi"
     affiliation: "King Fahd University of Petroleum and Minerals"
     orcid: "https://orcid.org/0000-0000-0000-0000"
-version: 0.1.0
-date-released: 2026-01-01
+version: 0.3.0
+date-released: 2026-10-31
 license: MIT
-repository-code: "https://github.com/abdurrahman-aderinto/bilateral-teleoperation-for-surface-contact-tasks"
+repository-code: "https://github.com/aderinto-kfupm/bilateral-teleoperation-contact"
 # doi: "10.5281/zenodo.0000000"   # add after archiving a release on Zenodo

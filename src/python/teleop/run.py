@@ -15,6 +15,7 @@ import json
 import os
 import time
 from dataclasses import replace
+
 import numpy as np
 
 from . import config
@@ -71,10 +72,14 @@ class Scripted:
 
 
 class DualSense:
-    """Left stick = tangential x/y, right stick y = z. Rumble = cue; trigger resistance is log/overlay only."""
+    """Left stick = tangential x/y, right stick y = z. Options = reset the trial, Circle = end it.
+    Rumble = cue; trigger resistance is log/overlay only."""
 
-    def __init__(self, index=0, speed=0.06, clutch_button=None):
+    RESET_BUTTON, END_BUTTON = 9, 1                        # pygame/SDL indices on Windows (starter README)
+
+    def __init__(self, index=0, speed=0.06, clutch_button=None, haptic=True):
         import pygame
+        self.haptic = haptic                               # False in the baseline: no cue is rendered
         pygame.init()
         self.pg, self.speed, self.clutch = pygame, speed, clutch_button
         for i in range(30):                                # wait up to ~15 s for the pad to (re)connect
@@ -86,19 +91,30 @@ class DualSense:
                 print("[sim] no controller found; connect the DualSense (USB/Bluetooth). Waiting up to 15 s...")
             time.sleep(0.5)
         else:
-            raise SystemExit("[sim] still no controller. Check it with ..\\haptic-control\\controller_test_ps5.py --list, "
-                             "or run with --operator keyboard (arrows = x/y, W/S = z).")
+            raise SystemExit("[sim] still no controller. Check it with src\\haptic-control\\controller_test_ps5.py --list, "
+                             "or run with --operator keyboard (arrows = x/y, W/S or Page Up/Down = z).")
         self.js = pygame.joystick.Joystick(index)
         self.js.init()
         print(f"[sim] using controller: {self.js.get_name()}")
         self.phase, self.last_rumble = "manual", 0.0
+        self.prev = {}
+
+    def _pressed(self, b):
+        """True on the press edge of button b."""
+        now = b < self.js.get_numbuttons() and bool(self.js.get_button(b))
+        was, self.prev[b] = self.prev.get(b, False), now
+        return now and not was
 
     def __call__(self, t, obs):
         self.pg.event.pump()
+        if self._pressed(self.RESET_BUTTON):
+            return np.zeros(3), "reset"
+        if self._pressed(self.END_BUTTON):
+            return np.zeros(3), "done"
         ax = lambda i: (lambda v: 0.0 if abs(v) < 0.08 else v)(self.js.get_axis(i))
         engaged = self.clutch is None or self.js.get_button(self.clutch)
         u = np.array([ax(0), -ax(1), -ax(3)]) * self.speed if engaged else np.zeros(3)
-        if obs and t - self.last_rumble > 0.03:
+        if self.haptic and obs and t - self.last_rumble > 0.03:
             self.js.rumble(obs["a_vib"], min(1.0, 0.6 * obs["a_trig"]), 60)
             self.last_rumble = t
         if obs and obs["p_raw"][0] >= X1:                  # reached the end of the path
@@ -107,18 +123,42 @@ class DualSense:
 
 
 class Keyboard:
-    """No-controller fallback (needs --gui, click the PyBullet window): arrows = x/y, W/S = z up/down. No haptic cue."""
+    """No-controller fallback (needs --gui, click the PyBullet window): arrows = x/y, Page Down/Up or S/W = z,
+    R = reset the trial, Q = end it. No haptic cue. Letters are accepted in either case."""
 
-    def __init__(self, speed=0.06):
+    NUDGE = 0.002                                          # z step per W/S key press [m]
+
+    def __init__(self, speed=0.06, dt=1 / 240):
         import pybullet as p
-        self.p, self.speed, self.phase = p, speed, "manual"
+        self.p, self.speed, self.dt, self.phase = p, speed, dt, "manual"
+        self.known = {p.B3G_RIGHT_ARROW, p.B3G_LEFT_ARROW, p.B3G_UP_ARROW, p.B3G_DOWN_ARROW,
+                      p.B3G_PAGE_UP, p.B3G_PAGE_DOWN, *(ord(c) for c in "wsrqWSRQ")}
+        self.reported = set()
 
     def __call__(self, t, obs):
         p, k = self.p, self.p.getKeyboardEvents()
-        down = lambda key: bool(k.get(key, 0) & p.KEY_IS_DOWN)
+
+        def down(*keys):
+            return any(k.get(key, 0) & p.KEY_IS_DOWN for key in keys)
+
+        def hit(c):
+            return any(k.get(ord(x), 0) & p.KEY_WAS_TRIGGERED for x in (c, c.upper()))
+
+        for key in set(k) - self.known - self.reported - {-1, p.B3G_SHIFT, p.B3G_CONTROL, p.B3G_ALT}:  # diagnose layouts
+            self.reported.add(key)
+            print(f"[sim] key code {key} is not mapped (z: W/S or Page Up/Down; R reset; Q end)")
+        if hit("r"):
+            return np.zeros(3), "reset"
+        if hit("q"):
+            return np.zeros(3), "done"
         u = np.array([down(p.B3G_RIGHT_ARROW) - down(p.B3G_LEFT_ARROW),
                       down(p.B3G_UP_ARROW) - down(p.B3G_DOWN_ARROW),
-                      down(ord("w")) - down(ord("s"))], float) * self.speed
+                      down(ord("w"), ord("W"), p.B3G_PAGE_UP) - down(ord("s"), ord("S"), p.B3G_PAGE_DOWN)],
+                     float) * self.speed
+        if u[2] == 0:
+            # Windows reports letters only as key presses (auto-repeated while held), never as held down:
+            # each press moves z by NUDGE, so holding W/S still gives about self.speed.
+            u[2] = (hit("w") - hit("s")) * self.NUDGE / self.dt
         if obs and obs["p_raw"][0] >= X1:
             return np.zeros(3), "done"
         return u, self.phase
@@ -135,16 +175,30 @@ def run_scenario(name, args):
         sc.command_tip(p0)
         sc.step()
     ctrl = Controller(P, mode, p0)
-    op = (DualSense(index=args.controller_index, clutch_button=args.clutch_button) if args.operator == "dualsense" else
-          Keyboard() if args.operator == "keyboard" else
-          Scripted(sc, guided=mode.force_track, reactive=args.operator == "reactive", haptic=haptic, seed=args.seed))
-    overlay = Overlay(sc, name) if args.gui else None
+    op = (DualSense(index=args.controller_index, clutch_button=args.clutch_button, haptic=haptic) if args.operator == "dualsense" else
+          Keyboard(dt=P.dt) if args.operator == "keyboard" else
+          Scripted(sc, guided=mode.force_track, reactive=args.operator == "reactive", haptic=haptic, seed=args.seed,
+                   push_depth=getattr(args, "push_depth", 0.03)))
+    overlay = Overlay(sc, name, hud=getattr(args, "hud", False)) if args.gui else None
+    timeout = getattr(args, "timeout", TIMEOUT_S)
+    human = args.operator in ("keyboard", "dualsense")
+    if human:
+        keys = "Q ends, R resets" if args.operator == "keyboard" else "Circle ends, Options resets"
+        print(f"[sim] {name}: go down to the plate and follow the yellow line to its end within "
+              f"{timeout:.0f} s ({keys})")
 
     rows, obs, t, done_t = [], None, 0.0, None
     try:
-        while t < TIMEOUT_S:
+        next_note = 10.0
+        while t < timeout:
+            if human and t >= next_note:
+                print(f"[sim] {timeout - t:.0f} s left")
+                next_note += 10.0
             t0 = time.perf_counter()
             u, phase = op(t, obs)
+            if phase == "reset":                           # operator asked for a fresh trial
+                sc.close()
+                return None, P
             tip, vel = sc.tip()
             fe, n_true, npts = sc.contact_wrench()
             obs = ctrl.step(u, fe, tip, vel, n_true)
@@ -174,6 +228,8 @@ def run_scenario(name, args):
                 done_t = done_t or t
                 if t - done_t > 0.5:
                     break
+        if t >= timeout and human:
+            print(f"[sim] time limit ({timeout:.0f} s) reached: trial ended")
     except KeyboardInterrupt:
         print("interrupted: saving what was logged")
     sc.close()
@@ -183,9 +239,9 @@ def run_scenario(name, args):
 class Overlay:
     """GUI observability: force arrow, reference/command markers, text readout, path line."""
 
-    def __init__(self, scene, name):
+    def __init__(self, scene, name, hud=False):
         import pybullet as p
-        self.p, self.s, self.name, self.ids = p, scene, name, {}
+        self.p, self.s, self.name, self.ids, self.hud = p, scene, name, {}, hud
         pts = [[x, 0, scene.surface_height_normal(x)[0] + 0.002] for x in np.linspace(X0, X1, 40)]
         for a, b in zip(pts[:-1], pts[1:]):
             p.addUserDebugLine(a, b, [1, 1, 0], 3)
@@ -198,6 +254,8 @@ class Overlay:
         self._line("force", tip.tolist(), (tip - fe * 0.01).tolist(), [min(1, obs["fn"] / 12), 0.2, 0.2])
         for key, rgb in (("p_h", [0, 1, 0]), ("p_c", [0, 0.4, 1])):
             self._line("m_" + key, (obs[key] - [0.01, 0, 0]).tolist(), (obs[key] + [0.01, 0, 0]).tolist(), rgb)
+        if not self.hud:                   # no text by default: the baseline must stay visual-only
+            return
         txt = (f"{self.name} [{phase}]  fn={obs['fn']:5.1f}N  vib={obs['a_vib']:.2f}  trig={obs['a_trig']:.2f}"
                f"  sat={'ON' if obs['saturated'] else 'off'}   green=p_h(operator) blue=p_c(robot)")
         self.ids["txt"] = self.p.addUserDebugText(txt, [0.30, -0.3, self.s.surface_top + 0.25], [0, 0, 0], 1.2,
@@ -221,12 +279,15 @@ def metrics(name, rows, P):
     max_loss_s = float(runs.max() * dt) if len(runs) else 0.0
     done = any(r["phase"] == "done" for r in rows)
     reasons = []
+    x = c("tip_x")[tr]
+    covered = np.unique(np.clip(np.digitize(x[contact], np.linspace(X0, X1, 21)), 1, 20))
     if not done: reasons.append("timeout")
+    elif x.max() < X1 - 0.02: reasons.append("ended before path end")    # Q / Circle pressed early (tip may lag the reference)
+    if not contact.any(): reasons.append("no contact")
+    elif len(covered) < 18: reasons.append(f"coverage {5 * len(covered)}%<90%")
     if fn.max() > F_FAIL: reasons.append(f"peak force>{F_FAIL:.0f}N")
     if max_loss_s > LOSS_FAIL_S: reasons.append("prolonged contact loss")
     if c("near_limit").any(): reasons.append("joint limit")
-    x = c("tip_x")[tr]
-    covered = np.unique(np.clip(np.digitize(x[contact], np.linspace(X0, X1, 21)), 1, 20))
     dist = c("dist_to_surface")[tr]
     path_err = np.sqrt(np.mean(c("tip_y")[tr] ** 2 + dist ** 2))
     d = lambda v: np.diff(v) / dt
@@ -307,6 +368,11 @@ def main():
     ap.add_argument("--gui", action="store_true")
     ap.add_argument("--seed", type=int, default=config.SEED)
     ap.add_argument("--outdir", default=None)
+    ap.add_argument("--push-depth", type=float, default=0.03,
+                    help="scripted/reactive operator: how far the reference is pushed past the surface [m]")
+    ap.add_argument("--timeout", type=float, default=TIMEOUT_S,
+                    help=f"trial time limit [s] (default {TIMEOUT_S:.0f}; the success criterion uses this limit)")
+    ap.add_argument("--hud", action="store_true", help="show the text readout (force, cues) in the GUI")
     ap.add_argument("--clutch-button", type=int, default=None, help="DualSense button held to move (default: always on)")
     args = ap.parse_args()
     names = {"all": PLANAR + CURVED, "planar": PLANAR, "curved": CURVED}.get(args.scenario, [args.scenario])
@@ -315,6 +381,9 @@ def main():
     results, summ = [], []
     for name in names:
         rows, P = run_scenario(name, args)
+        while rows is None:                                # reset: same scenario, fresh scene and initial state
+            print(f"[sim] {name}: reset by the operator, restarting the trial")
+            rows, P = run_scenario(name, args)
         if not rows:
             continue
         write_csv(rows, os.path.join(outdir, f"{name}.csv"))

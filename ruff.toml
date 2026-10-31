@@ -1,0 +1,7 @@
+# Ruff config for files outside src/python (src/python/pyproject.toml holds the same settings).
+# The rule set is pinned so that new ruff releases do not change what CI checks.
+line-length = 100
+extend-exclude = ["src/haptic-control"]   # vendored starter code, kept as received
+
+[lint]
+select = ["E9", "F", "I"]   # real errors + import order; the compact one-line style is intentional
