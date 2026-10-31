@@ -123,12 +123,14 @@ class DualSense:
 
 
 class Keyboard:
-    """No-controller fallback (needs --gui, click the PyBullet window): arrows = x/y, W/S or Page Up/Down = z,
+    """No-controller fallback (needs --gui, click the PyBullet window): arrows = x/y, Page Down/Up or S/W = z,
     R = reset the trial, Q = end it. No haptic cue. Letters are accepted in either case."""
 
-    def __init__(self, speed=0.06):
+    NUDGE = 0.002                                          # z step per W/S key press [m]
+
+    def __init__(self, speed=0.06, dt=1 / 240):
         import pybullet as p
-        self.p, self.speed, self.phase = p, speed, "manual"
+        self.p, self.speed, self.dt, self.phase = p, speed, dt, "manual"
         self.known = {p.B3G_RIGHT_ARROW, p.B3G_LEFT_ARROW, p.B3G_UP_ARROW, p.B3G_DOWN_ARROW,
                       p.B3G_PAGE_UP, p.B3G_PAGE_DOWN, *(ord(c) for c in "wsrqWSRQ")}
         self.reported = set()
@@ -153,6 +155,10 @@ class Keyboard:
                       down(p.B3G_UP_ARROW) - down(p.B3G_DOWN_ARROW),
                       down(ord("w"), ord("W"), p.B3G_PAGE_UP) - down(ord("s"), ord("S"), p.B3G_PAGE_DOWN)],
                      float) * self.speed
+        if u[2] == 0:
+            # Windows reports letters only as key presses (auto-repeated while held), never as held down:
+            # each press moves z by NUDGE, so holding W/S still gives about self.speed.
+            u[2] = (hit("w") - hit("s")) * self.NUDGE / self.dt
         if obs and obs["p_raw"][0] >= X1:
             return np.zeros(3), "done"
         return u, self.phase
@@ -170,7 +176,7 @@ def run_scenario(name, args):
         sc.step()
     ctrl = Controller(P, mode, p0)
     op = (DualSense(index=args.controller_index, clutch_button=args.clutch_button, haptic=haptic) if args.operator == "dualsense" else
-          Keyboard() if args.operator == "keyboard" else
+          Keyboard(dt=P.dt) if args.operator == "keyboard" else
           Scripted(sc, guided=mode.force_track, reactive=args.operator == "reactive", haptic=haptic, seed=args.seed,
                    push_depth=getattr(args, "push_depth", 0.03)))
     overlay = Overlay(sc, name, hud=getattr(args, "hud", False)) if args.gui else None
